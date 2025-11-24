@@ -62,6 +62,7 @@ impl LoadBalancer {
     fn get_worker(&mut self) -> &str {
         // Use a round-robin strategy to select a worker
         let worker = self.worker_hosts.get(self.current_worker).unwrap();
+        println!("hit worker {}", self.current_worker);
         self.current_worker = (self.current_worker + 1) % self.worker_hosts.len();
         worker
     }
