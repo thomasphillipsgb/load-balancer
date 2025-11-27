@@ -5,14 +5,12 @@ use hyper_util::{
     client::legacy::{Client, ResponseFuture, connect::HttpConnector},
     rt::TokioExecutor,
 };
-use tokio::sync::RwLock;
 
 use crate::{balancing_algorithms::BalancingAlgorithm, worker::Worker};
 
 pub struct LoadBalancer {
     client: Client<HttpConnector, Incoming>,
     worker_hosts: Vec<Worker>,
-    current_worker: usize,
     balancing_algorithm: Box<dyn BalancingAlgorithm>,
 }
 
@@ -35,13 +33,12 @@ impl LoadBalancer {
         Ok(LoadBalancer {
             client,
             worker_hosts,
-            current_worker: 0,
             balancing_algorithm,
         })
     }
 
     pub fn forward_request(&mut self, req: Request<Incoming>) -> ResponseFuture {
-        let worker_uri = self.get_worker().to_owned();
+        let worker_uri = self.balancing_algorithm.choose(&self.worker_hosts).unwrap();
         let mut worker_uri = worker_uri.host.clone();
 
         // Extract the path and query from the original request
@@ -68,13 +65,5 @@ impl LoadBalancer {
         }
 
         self.client.request(new_req)
-    }
-
-    fn get_worker(&mut self) -> &Worker {
-        // Use a round-robin strategy to select a worker
-        let worker = self.worker_hosts.get(self.current_worker).unwrap();
-        println!("hit worker {}", self.current_worker);
-        self.current_worker = (self.current_worker + 1) % self.worker_hosts.len();
-        worker
     }
 }

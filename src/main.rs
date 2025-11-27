@@ -1,12 +1,11 @@
-use std::{net::SocketAddr, str::FromStr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc};
 
 use hyper::server::conn::http1;
-use hyper::{Request, Response, Uri, body::Incoming, service::service_fn};
-use hyper_util::client::legacy::connect::HttpConnector;
-use hyper_util::client::legacy::{Client, Error as ClientError, ResponseFuture};
-use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper::{Request, Response, body::Incoming, service::service_fn};
+use hyper_util::client::legacy::Error as ClientError;
+use hyper_util::rt::TokioIo;
 use load_balancer::LoadBalancer;
-use load_balancer::balancing_algorithms::{BalancingAlgorithm, RoundRobinAlgorithm};
+use load_balancer::balancing_algorithms::RoundRobinAlgorithm;
 use tokio::sync::RwLock;
 use tokio::{net::TcpListener, task};
 
