@@ -1,4 +1,5 @@
 pub mod balancing_algorithms;
+mod least_connections;
 mod load_balancer;
 mod worker;
 
