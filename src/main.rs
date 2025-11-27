@@ -6,6 +6,7 @@ use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::{Client, Error as ClientError, ResponseFuture};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use load_balancer::LoadBalancer;
+use load_balancer::balancing_algorithms::{BalancingAlgorithm, RoundRobinAlgorithm};
 use tokio::sync::RwLock;
 use tokio::{net::TcpListener, task};
 
@@ -16,8 +17,10 @@ async fn main() {
         "http://localhost:3001".to_string(),
     ];
 
+    let algo = Box::new(RoundRobinAlgorithm::new());
+
     let load_balancer = Arc::new(RwLock::new(
-        LoadBalancer::new(worker_hosts).expect("failed to create load balancer"),
+        LoadBalancer::new(worker_hosts, algo).expect("failed to create load balancer"),
     ));
 
     let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 1337));

@@ -1,3 +1,11 @@
+use std::{convert::Infallible, time::Duration};
+
+use http_body_util::Full;
+use hyper::{
+    Method, Request, Response, StatusCode,
+    body::{Bytes, Incoming},
+};
+
 pub async fn worker_service(
     req: Request<Incoming>,
     port: u16,
@@ -30,4 +38,8 @@ pub async fn worker_service(
             .body(Full::new(Bytes::from(message)))
             .expect("response builder")),
     }
+}
+
+pub struct Worker {
+    pub host: String,
 }

@@ -1,1 +1,1 @@
-mod load_balancer;
+mod load_balancer_test;
