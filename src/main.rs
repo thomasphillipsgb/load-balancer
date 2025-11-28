@@ -22,9 +22,8 @@ async fn main() {
 
     let algo = Box::new(LeastConnections::new(&worker_hosts));
 
-    let load_balancer = Arc::new(RwLock::new(
-        LoadBalancer::new(worker_hosts, algo).expect("failed to create load balancer"),
-    ));
+    let load_balancer =
+        Arc::new(LoadBalancer::new(worker_hosts, algo).expect("failed to create load balancer"));
 
     let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 1337));
 
@@ -56,7 +55,7 @@ async fn main() {
 
 async fn handle(
     req: Request<Incoming>,
-    load_balancer: Arc<RwLock<LoadBalancer>>,
+    load_balancer: Arc<LoadBalancer>,
 ) -> Result<Response<Incoming>, ClientError> {
-    load_balancer.write().await.forward_request(req).await
+    load_balancer.forward_request(req).await
 }
