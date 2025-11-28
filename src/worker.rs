@@ -25,8 +25,16 @@ pub async fn worker_service(
             .status(StatusCode::OK)
             .body(Full::new(Bytes::from("Health Status - OK")))
             .expect("response builder")),
+        (&Method::GET, "/heavy_work") => {
+            tokio::time::sleep(Duration::from_secs(10)).await;
+
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .body(Full::new(Bytes::from("Work complete!")))
+                .expect("response builder"))
+        }
         (&Method::GET, "/work") => {
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
 
             Ok(Response::builder()
                 .status(StatusCode::OK)

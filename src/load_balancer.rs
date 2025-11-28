@@ -16,17 +16,9 @@ pub struct LoadBalancer {
 
 impl LoadBalancer {
     pub fn new(
-        worker_hosts: Vec<String>,
+        worker_hosts: Vec<Worker>,
         balancing_algorithm: Box<dyn BalancingAlgorithm>,
     ) -> Result<Self, String> {
-        if worker_hosts.is_empty() {
-            return Err("No worker hosts provided".into());
-        }
-        let worker_hosts = worker_hosts
-            .iter()
-            .map(|host| Worker { host: host.clone() })
-            .collect();
-
         let connector = HttpConnector::new();
         let client = Client::builder(TokioExecutor::new()).build(connector);
 
@@ -37,9 +29,12 @@ impl LoadBalancer {
         })
     }
 
-    pub fn forward_request(&mut self, req: Request<Incoming>) -> ResponseFuture {
-        let worker_uri = self.balancing_algorithm.choose(&self.worker_hosts).unwrap();
-        let mut worker_uri = worker_uri.host.clone();
+    pub async fn forward_request(
+        &mut self,
+        req: Request<Incoming>,
+    ) -> Result<hyper::Response<Incoming>, hyper_util::client::legacy::Error> {
+        let worker = self.balancing_algorithm.choose(&self.worker_hosts).unwrap();
+        let mut worker_uri = worker.host.clone();
 
         // Extract the path and query from the original request
         if let Some(path_and_query) = req.uri().path_and_query() {
@@ -64,6 +59,8 @@ impl LoadBalancer {
             new_req.headers_mut().insert(key, value.clone());
         }
 
-        self.client.request(new_req)
+        let response = self.client.request(new_req).await;
+        self.balancing_algorithm.release(worker);
+        response
     }
 }

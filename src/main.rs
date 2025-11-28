@@ -4,19 +4,23 @@ use hyper::server::conn::http1;
 use hyper::{Request, Response, body::Incoming, service::service_fn};
 use hyper_util::client::legacy::Error as ClientError;
 use hyper_util::rt::TokioIo;
-use load_balancer::LoadBalancer;
-use load_balancer::balancing_algorithms::RoundRobinAlgorithm;
+use load_balancer::balancing_algorithms::{LeastConnections, RoundRobinAlgorithm};
+use load_balancer::{LoadBalancer, Worker};
 use tokio::sync::RwLock;
 use tokio::{net::TcpListener, task};
 
 #[tokio::main]
 async fn main() {
     let worker_hosts = vec![
-        "http://localhost:3000".to_string(),
-        "http://localhost:3001".to_string(),
+        Worker {
+            host: "http://localhost:3000".to_string(),
+        },
+        Worker {
+            host: "http://localhost:3001".to_string(),
+        },
     ];
 
-    let algo = Box::new(RoundRobinAlgorithm::new());
+    let algo = Box::new(LeastConnections::new(&worker_hosts));
 
     let load_balancer = Arc::new(RwLock::new(
         LoadBalancer::new(worker_hosts, algo).expect("failed to create load balancer"),
@@ -32,9 +36,14 @@ async fn main() {
 
     loop {
         let (stream, _) = listener.accept().await.expect("failed to accept");
+        println!("accepted connection from {}", stream.peer_addr().unwrap());
         let load_balancer = load_balancer.clone();
 
         task::spawn(async move {
+            println!(
+                "spawned task for connection from {}",
+                stream.peer_addr().unwrap()
+            );
             let io = TokioIo::new(stream);
             let service = service_fn(move |req| handle(req, load_balancer.clone()));
 
