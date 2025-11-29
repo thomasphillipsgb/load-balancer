@@ -1,6 +1,6 @@
 use load_balancer::Worker;
 use load_balancer::balancing_algorithms::{
-    BalancingAlgorithm, LeastConnections, RoundRobinAlgorithm,
+    BalancingAlgorithm, LeastConnectionsAlgorithm, RoundRobinAlgorithm,
 };
 
 #[test]
@@ -43,7 +43,7 @@ fn test_least_connections_algorithm_selection() {
             host: "http://localhost:3001".to_string(),
         },
     ];
-    let mut algorithm = LeastConnections::new(&workers);
+    let mut algorithm = LeastConnectionsAlgorithm::new(&workers);
 
     // Initially should choose first worker (they're equal at 0 connections)
     let first_choice = algorithm.choose(&workers).unwrap();
@@ -65,7 +65,7 @@ fn test_least_connections_release_functionality() {
             host: "http://localhost:3001".to_string(),
         },
     ];
-    let mut algorithm = LeastConnections::new(&workers);
+    let mut algorithm = LeastConnectionsAlgorithm::new(&workers);
 
     // Choose a worker
     let chosen_worker = algorithm.choose(&workers).unwrap();
@@ -111,7 +111,7 @@ fn test_least_connections_initialization() {
             host: "http://localhost:3001".to_string(),
         },
     ];
-    let _algorithm = LeastConnections::new(&workers);
+    let _algorithm = LeastConnectionsAlgorithm::new(&workers);
 
     // Should create successfully without panicking
     assert!(true);
@@ -144,7 +144,7 @@ fn test_balancing_algorithm_trait_send_sync() {
 
     assert_send_sync::<Box<dyn BalancingAlgorithm>>();
     assert_send_sync::<RoundRobinAlgorithm>();
-    assert_send_sync::<LeastConnections>();
+    assert_send_sync::<LeastConnectionsAlgorithm>();
 }
 
 #[test]
@@ -194,7 +194,7 @@ fn test_least_connections_prefers_less_busy_worker() {
             host: "http://localhost:3002".to_string(),
         },
     ];
-    let mut algorithm = LeastConnections::new(&workers);
+    let mut algorithm = LeastConnectionsAlgorithm::new(&workers);
 
     // Choose first worker and don't release it
     let worker1 = algorithm.choose(&workers).unwrap();

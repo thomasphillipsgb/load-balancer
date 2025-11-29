@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::worker::{self, Worker};
+use crate::worker::Worker;
 
 pub trait BalancingAlgorithm: Send + Sync {
     fn choose<'a>(&mut self, workers: &'a Vec<Worker>) -> Option<&'a Worker>;
@@ -32,11 +32,11 @@ impl BalancingAlgorithm for RoundRobinAlgorithm {
     }
 }
 
-pub struct LeastConnections {
+pub struct LeastConnectionsAlgorithm {
     connection_map: HashMap<String, i32>,
 }
 
-impl LeastConnections {
+impl LeastConnectionsAlgorithm {
     pub fn new(workers: &Vec<Worker>) -> Self {
         let mut connection_map = HashMap::new();
         for worker in workers {
@@ -46,7 +46,7 @@ impl LeastConnections {
     }
 }
 
-impl BalancingAlgorithm for LeastConnections {
+impl BalancingAlgorithm for LeastConnectionsAlgorithm {
     fn choose<'a>(&mut self, workers: &'a Vec<Worker>) -> Option<&'a Worker> {
         for worker in workers {
             self.connection_map.entry(worker.host.clone()).or_insert(0);

@@ -1,12 +1,15 @@
 use std::{net::SocketAddr, sync::Arc};
 
+use http_body_util::combinators::BoxBody;
 use hyper::server::conn::http1;
-use hyper::{Request, Response, body::Incoming, service::service_fn};
-use hyper_util::client::legacy::Error as ClientError;
+use hyper::{
+    Request, Response,
+    body::{Bytes, Incoming},
+    service::service_fn,
+};
 use hyper_util::rt::TokioIo;
-use load_balancer::balancing_algorithms::{LeastConnections, RoundRobinAlgorithm};
+use load_balancer::balancing_algorithms::LeastConnectionsAlgorithm;
 use load_balancer::{LoadBalancer, Worker};
-use tokio::sync::RwLock;
 use tokio::{net::TcpListener, task};
 
 #[tokio::main]
@@ -20,7 +23,7 @@ async fn main() {
         },
     ];
 
-    let algo = Box::new(LeastConnections::new(&worker_hosts));
+    let algo = Box::new(LeastConnectionsAlgorithm::new(&worker_hosts));
 
     let load_balancer =
         Arc::new(LoadBalancer::new(worker_hosts, algo).expect("failed to create load balancer"));
@@ -56,6 +59,6 @@ async fn main() {
 async fn handle(
     req: Request<Incoming>,
     load_balancer: Arc<LoadBalancer>,
-) -> Result<Response<Incoming>, ClientError> {
+) -> Result<Response<BoxBody<Bytes, hyper::Error>>, Box<dyn std::error::Error + Send + Sync>> {
     load_balancer.forward_request(req).await
 }

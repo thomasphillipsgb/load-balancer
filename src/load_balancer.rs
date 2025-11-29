@@ -1,16 +1,24 @@
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 
-use hyper::{Request, Uri, body::Incoming};
+use http_body_util::{BodyExt, Empty, Full, combinators::BoxBody};
+use hyper::{
+    Request, Response, Uri,
+    body::{Bytes, Incoming},
+};
 use hyper_util::{
-    client::legacy::{Client, ResponseFuture, connect::HttpConnector},
+    client::legacy::{Client, connect::HttpConnector},
     rt::TokioExecutor,
 };
+use serde::Deserialize;
 use tokio::sync::RwLock;
 
-use crate::{balancing_algorithms::BalancingAlgorithm, worker::Worker};
+use crate::{
+    balancing_algorithms::{BalancingAlgorithm, LeastConnectionsAlgorithm, RoundRobinAlgorithm},
+    worker::Worker,
+};
 
 pub struct LoadBalancer {
-    client: Client<HttpConnector, Incoming>,
+    client: Client<HttpConnector, BoxBody<Bytes, hyper::Error>>,
     worker_hosts: Vec<Worker>,
     balancing_algorithm: RwLock<Box<dyn BalancingAlgorithm>>,
 }
@@ -37,7 +45,10 @@ impl LoadBalancer {
     pub async fn forward_request(
         &self,
         req: Request<Incoming>,
-    ) -> Result<hyper::Response<Incoming>, hyper_util::client::legacy::Error> {
+    ) -> Result<
+        hyper::Response<BoxBody<Bytes, hyper::Error>>,
+        Box<dyn std::error::Error + Send + Sync>,
+    > {
         let worker = {
             self.balancing_algorithm
                 .write()
@@ -52,26 +63,57 @@ impl LoadBalancer {
             worker_uri.push_str(path_and_query.as_str());
         }
 
+        if req.uri().path().ends_with("change_algo") {
+            let query = req.uri().query().expect("No Query");
+            let params: ChangeAlgoRequest =
+                serde_urlencoded::from_str(query).expect("Query is invalid for request");
+
+            let new_algo: Box<dyn BalancingAlgorithm> = match params.algo_type {
+                BalancingAlgorithmType::RoundRobin => Box::new(RoundRobinAlgorithm::new()),
+                BalancingAlgorithmType::LeastConnections => {
+                    Box::new(LeastConnectionsAlgorithm::new(&self.worker_hosts))
+                }
+            };
+
+            let mut algo = self.balancing_algorithm.write().await;
+            *algo = new_algo;
+
+            return Ok(Response::builder()
+                .body(BoxBody::new(Empty::new().map_err(|never| match never {})))
+                .unwrap());
+        }
+
         // Create a new URI from the worker URI
         let new_uri = Uri::from_str(&worker_uri).unwrap();
 
-        // Extract the headers from the original request
-        let headers = req.headers().clone();
+        // Destructure the request to extract parts without cloning
+        let (mut parts, body) = req.into_parts();
+        parts.uri = new_uri;
 
-        // Clone the original request's headers and method
-        let mut new_req = Request::builder()
-            .method(req.method())
-            .uri(new_uri)
-            .body(req.into_body())
-            .expect("request builder");
+        // Reconstruct the request with the streaming body wrapped in BoxBody
+        let new_req = Request::from_parts(parts, BoxBody::new(body));
 
-        // Copy headers from the original request
-        for (key, value) in headers.iter() {
-            new_req.headers_mut().insert(key, value.clone());
-        }
-
-        let response = self.client.request(new_req).await;
+        let response = self
+            .client
+            .request(new_req)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
         self.balancing_algorithm.write().await.release(worker);
-        response
+
+        // Wrap the streaming response body in BoxBody
+        let (parts, body) = response.into_parts();
+        let boxed_body = BoxBody::new(body.map_err(|e| hyper::Error::from(e)));
+        Ok(Response::from_parts(parts, boxed_body))
     }
+}
+
+#[derive(Deserialize)]
+struct ChangeAlgoRequest {
+    algo_type: BalancingAlgorithmType,
+}
+
+#[derive(Deserialize)]
+enum BalancingAlgorithmType {
+    RoundRobin,
+    LeastConnections,
 }
