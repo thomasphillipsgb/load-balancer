@@ -20,6 +20,10 @@ impl LoadBalancer {
         worker_hosts: Vec<Worker>,
         balancing_algorithm: Box<dyn BalancingAlgorithm>,
     ) -> Result<Self, String> {
+        if worker_hosts.is_empty() {
+            return Err("Worker hosts list cannot be empty".to_string());
+        }
+
         let connector = HttpConnector::new();
         let client = Client::builder(TokioExecutor::new()).build(connector);
 

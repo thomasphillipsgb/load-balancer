@@ -24,7 +24,7 @@ async fn test_load_balancer_new_with_empty_workers() {
     let algorithm = Box::new(RoundRobinAlgorithm::new());
 
     let load_balancer = LoadBalancer::new(workers, algorithm);
-    assert!(load_balancer.is_ok());
+    assert!(load_balancer.is_err());
 }
 
 #[tokio::test]
