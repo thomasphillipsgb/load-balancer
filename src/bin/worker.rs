@@ -2,35 +2,14 @@ use std::{convert::Infallible, env, net::SocketAddr, time::Duration};
 
 use http_body_util::Full;
 use hyper::{
-    Request, Response, StatusCode,
+    Method, Request, Response, StatusCode,
     body::{Bytes, Incoming},
     service::service_fn,
 };
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto::Builder;
+use load_balancer::worker_service;
 use tokio::{net::TcpListener, task};
-
-async fn worker_handler(
-    req: Request<Incoming>,
-    port: u16,
-) -> Result<Response<Full<Bytes>>, Infallible> {
-    let message = format!(
-        "worker on port {} received {} {}",
-        port,
-        req.method(),
-        req.uri()
-            .path_and_query()
-            .map(|pq| pq.as_str())
-            .unwrap_or("/")
-    );
-
-    tokio::time::sleep(Duration::from_secs(1)).await;
-
-    Ok(Response::builder()
-        .status(StatusCode::OK)
-        .body(Full::new(Bytes::from(message)))
-        .expect("response builder"))
-}
 
 #[tokio::main]
 async fn main() {
@@ -52,7 +31,7 @@ async fn main() {
 
         task::spawn(async move {
             let io = TokioIo::new(stream);
-            let service = service_fn(move |req| worker_handler(req, port));
+            let service = service_fn(move |req| worker_service(req, port));
             let builder = Builder::new(TokioExecutor::new());
 
             if let Err(err) = builder.serve_connection(io, service).await {
