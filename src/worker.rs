@@ -48,6 +48,7 @@ pub async fn worker_service(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Worker {
     pub host: String,
 }
