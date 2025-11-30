@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use crate::worker::{self, Worker};
+use crate::worker::Worker;
 
 pub trait BalancingAlgorithm: Send + Sync {
-    fn choose<'a>(&mut self, workers: &'a Vec<Worker>) -> Option<&'a Worker>;
+    fn choose<'a>(&mut self, workers: &'a [Worker]) -> &'a Worker;
     fn release(&mut self, worker: &Worker) {
         let _ = worker;
     }
@@ -21,14 +21,11 @@ impl RoundRobinAlgorithm {
 }
 
 impl BalancingAlgorithm for RoundRobinAlgorithm {
-    fn choose<'a>(&mut self, workers: &'a Vec<Worker>) -> Option<&'a Worker> {
-        if workers.is_empty() {
-            return None;
-        }
+    fn choose<'a>(&mut self, workers: &'a [Worker]) -> &'a Worker {
         let worker = &workers[self.current_index % workers.len()];
         self.current_index = (self.current_index + 1) % workers.len();
         println!("Chosen worker: {}", worker.host);
-        Some(worker)
+        worker
     }
 }
 
@@ -37,7 +34,7 @@ pub struct LeastConnections {
 }
 
 impl LeastConnections {
-    pub fn new(workers: &Vec<Worker>) -> Self {
+    pub fn new(workers: &[Worker]) -> Self {
         let mut connection_map = HashMap::new();
         for worker in workers {
             connection_map.insert(worker.host.clone(), 0);
@@ -47,14 +44,14 @@ impl LeastConnections {
 }
 
 impl BalancingAlgorithm for LeastConnections {
-    fn choose<'a>(&mut self, workers: &'a Vec<Worker>) -> Option<&'a Worker> {
-        for worker in workers {
-            self.connection_map.entry(worker.host.clone()).or_insert(0);
-        }
-
+    fn choose<'a>(&mut self, workers: &'a [Worker]) -> &'a Worker {
         let chosen_one = workers
             .iter()
-            .min_by_key(|worker| self.connection_map.get(&worker.host).unwrap_or(&0));
+            .min_by_key(|worker| *self.connection_map.get(&worker.host).unwrap_or(&0));
+
+        if let Some(worker) = chosen_one {
+            *self.connection_map.entry(worker.host.clone()).or_insert(0) += 1;
+        }
 
         if let Some(worker) = chosen_one {
             let counter = self.connection_map.entry(worker.host.clone()).or_insert(0);
@@ -66,7 +63,7 @@ impl BalancingAlgorithm for LeastConnections {
             );
         }
 
-        Some(chosen_one.unwrap())
+        chosen_one.unwrap()
     }
 
     fn release(&mut self, worker: &Worker) {

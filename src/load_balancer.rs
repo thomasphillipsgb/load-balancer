@@ -55,20 +55,13 @@ impl LoadBalancer {
         // Create a new URI from the worker URI
         let new_uri = Uri::from_str(&worker_uri).unwrap();
 
-        // Extract the headers from the original request
-        let headers = req.headers().clone();
-
         // Clone the original request's headers and method
         let mut new_req = Request::builder()
             .method(req.method())
             .uri(new_uri)
             .body(req.into_body())
             .expect("request builder");
-
-        // Copy headers from the original request
-        for (key, value) in headers.iter() {
-            new_req.headers_mut().insert(key, value.clone());
-        }
+        new_req.headers().extend(req.headers().drain());
 
         let response = self.client.request(new_req).await;
         self.balancing_algorithm.write().await.release(worker);

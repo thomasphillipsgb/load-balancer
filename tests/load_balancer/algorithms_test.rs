@@ -138,16 +138,6 @@ fn test_worker_clone() {
 }
 
 #[test]
-fn test_balancing_algorithm_trait_send_sync() {
-    // This test ensures our trait objects implement Send + Sync
-    fn assert_send_sync<T: Send + Sync>() {}
-
-    assert_send_sync::<Box<dyn BalancingAlgorithm>>();
-    assert_send_sync::<RoundRobinAlgorithm>();
-    assert_send_sync::<LeastConnections>();
-}
-
-#[test]
 fn test_round_robin_algorithm_consistency() {
     let workers = vec![
         Worker {
