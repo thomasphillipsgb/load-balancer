@@ -36,14 +36,13 @@ impl LoadBalancer {
 
     pub async fn forward_request(
         &self,
-        req: Request<Incoming>,
+        mut req: Request<Incoming>,
     ) -> Result<hyper::Response<Incoming>, hyper_util::client::legacy::Error> {
         let worker = {
             self.balancing_algorithm
                 .write()
                 .await
                 .choose(&self.worker_hosts)
-                .unwrap()
         };
         let mut worker_uri = worker.host.clone();
 
@@ -56,12 +55,15 @@ impl LoadBalancer {
         let new_uri = Uri::from_str(&worker_uri).unwrap();
 
         // Clone the original request's headers and method
-        let mut new_req = Request::builder()
-            .method(req.method())
-            .uri(new_uri)
-            .body(req.into_body())
-            .expect("request builder");
-        new_req.headers().extend(req.headers().drain());
+        let mut builder = Request::builder()
+            .method(req.method().clone().to_owned())
+            .uri(new_uri);
+        builder
+            .headers_mut()
+            .unwrap()
+            .extend(req.headers_mut().drain());
+
+        let new_req = builder.body(req.into_body()).expect("request builder");
 
         let response = self.client.request(new_req).await;
         self.balancing_algorithm.write().await.release(worker);
