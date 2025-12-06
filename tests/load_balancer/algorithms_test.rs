@@ -138,7 +138,8 @@ fn test_round_robin_algorithm_consistency() {
 
     // Test multiple cycles
     let mut selections = vec![];
-    for _ in 0..6 {
+    const CYCLES: usize = 3;
+    for _ in 0..CYCLES * workers.len() {
         // 3 full cycles
         let worker = algorithm.choose(&workers);
         selections.push(worker.host.clone());
