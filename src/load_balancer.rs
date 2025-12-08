@@ -6,7 +6,7 @@ use hyper::{
     body::{Bytes, Incoming},
 };
 use hyper_util::{
-    client::legacy::{Client, connect::HttpConnector},
+    client::legacy::{Client, Error, connect::HttpConnector},
     rt::TokioExecutor,
 };
 use serde::Deserialize;
@@ -17,8 +17,13 @@ use crate::{
     worker::Worker,
 };
 
+pub type ResponseBody = http_body_util::combinators::BoxBody<
+    hyper::body::Bytes,
+    Box<dyn std::error::Error + Send + Sync>,
+>;
+
 pub struct LoadBalancer {
-    client: Client<HttpConnector, BoxBody<Bytes, hyper::Error>>,
+    client: Client<HttpConnector, Incoming>,
     worker_hosts: Vec<Worker>,
     balancing_algorithm: RwLock<Box<dyn BalancingAlgorithm>>,
 }
@@ -42,19 +47,15 @@ impl LoadBalancer {
         })
     }
 
-    pub async fn forward_request(
+    pub async fn handle_request(
         &self,
-        req: Request<Incoming>,
-    ) -> Result<
-        hyper::Response<BoxBody<Bytes, hyper::Error>>,
-        Box<dyn std::error::Error + Send + Sync>,
-    > {
+        mut req: Request<Incoming>,
+    ) -> Result<hyper::Response<ResponseBody>, hyper_util::client::legacy::Error> {
         let worker = {
             self.balancing_algorithm
                 .write()
                 .await
                 .choose(&self.worker_hosts)
-                .unwrap()
         };
         let mut worker_uri = worker.host.clone();
 
@@ -64,46 +65,60 @@ impl LoadBalancer {
         }
 
         if req.uri().path().ends_with("change_algo") {
-            let query = req.uri().query().expect("No Query");
-            let params: ChangeAlgoRequest =
-                serde_urlencoded::from_str(query).expect("Query is invalid for request");
-
-            let new_algo: Box<dyn BalancingAlgorithm> = match params.algo_type {
-                BalancingAlgorithmType::RoundRobin => Box::new(RoundRobinAlgorithm::new()),
-                BalancingAlgorithmType::LeastConnections => {
-                    Box::new(LeastConnectionsAlgorithm::new(&self.worker_hosts))
-                }
-            };
-
-            let mut algo = self.balancing_algorithm.write().await;
-            *algo = new_algo;
-
-            return Ok(Response::builder()
-                .body(BoxBody::new(Empty::new().map_err(|never| match never {})))
-                .unwrap());
+            if let Some(value) = self.change_algorithm(&req).await {
+                return value;
+            }
         }
 
         // Create a new URI from the worker URI
         let new_uri = Uri::from_str(&worker_uri).unwrap();
 
-        // Destructure the request to extract parts without cloning
-        let (mut parts, body) = req.into_parts();
-        parts.uri = new_uri;
+        // Clone the original request's headers and method
+        let mut builder = Request::builder()
+            .method(req.method().clone().to_owned())
+            .uri(new_uri);
+        builder
+            .headers_mut()
+            .unwrap()
+            .extend(req.headers_mut().drain());
 
-        // Reconstruct the request with the streaming body wrapped in BoxBody
-        let new_req = Request::from_parts(parts, BoxBody::new(body));
+        let new_req = builder.body(req.into_body()).expect("request builder");
 
-        let response = self
-            .client
-            .request(new_req)
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+        let response = self.client.request(new_req).await;
         self.balancing_algorithm.write().await.release(worker);
 
         // Wrap the streaming response body in BoxBody
-        let (parts, body) = response.into_parts();
-        let boxed_body = BoxBody::new(body.map_err(|e| hyper::Error::from(e)));
-        Ok(Response::from_parts(parts, boxed_body))
+        response.map(|res| {
+            let (parts, body) = res.into_parts();
+            let boxed_body: ResponseBody = body
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+                .boxed();
+            Response::from_parts(parts, boxed_body)
+        })
+    }
+
+    async fn change_algorithm(
+        &self,
+        req: &Request<Incoming>,
+    ) -> Option<Result<Response<ResponseBody>, Error>> {
+        let query = req.uri().query().expect("No Query");
+        let params: ChangeAlgoRequest =
+            serde_urlencoded::from_str(query).expect("Query is invalid for request");
+        let new_algo: Box<dyn BalancingAlgorithm> = match params.algo_type {
+            BalancingAlgorithmType::RoundRobin => Box::new(RoundRobinAlgorithm::new()),
+            BalancingAlgorithmType::LeastConnections => {
+                Box::new(LeastConnectionsAlgorithm::new(&self.worker_hosts))
+            }
+        };
+        let mut algo = self.balancing_algorithm.write().await;
+        *algo = new_algo;
+
+        let response_body: ResponseBody = ResponseBody::new(
+            Full::new(Bytes::from("Balancing algorithm changed successfully"))
+                .map_err(|infallible| match infallible {}),
+        );
+
+        return Some(Ok(Response::new(response_body)));
     }
 }
 

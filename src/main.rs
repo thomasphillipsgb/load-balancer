@@ -59,6 +59,6 @@ async fn main() {
 async fn handle(
     req: Request<Incoming>,
     load_balancer: Arc<LoadBalancer>,
-) -> Result<Response<BoxBody<Bytes, hyper::Error>>, Box<dyn std::error::Error + Send + Sync>> {
-    load_balancer.forward_request(req).await
+) -> Result<Response<load_balancer::ResponseBody>, hyper_util::client::legacy::Error> {
+    load_balancer.handle_request(req).await
 }
