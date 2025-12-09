@@ -53,23 +53,15 @@ impl BalancingAlgorithm for LeastConnectionsAlgorithm {
             *self.connection_map.entry(worker.host.clone()).or_insert(0) += 1;
         }
 
-        if let Some(worker) = chosen_one {
-            let counter = self.connection_map.entry(worker.host.clone()).or_insert(0);
-            *counter += 1;
-
-            println!(
-                "Chosen worker: {}, current connections: {}",
-                worker.host, *counter
-            );
-        }
-
-        chosen_one.unwrap()
+        let chosen_one = chosen_one.unwrap();
+        println!("Chosen worker: {}", chosen_one.host);
+        chosen_one
     }
 
     fn release(&mut self, worker: &Worker) {
         if let Some(counter) = self.connection_map.get_mut(&worker.host) {
             if *counter > 0 {
-                *counter -= 1;
+                *counter = *counter - 1;
             }
             println!(
                 "Released worker: {}, current connections: {}",

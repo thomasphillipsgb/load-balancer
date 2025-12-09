@@ -64,7 +64,7 @@ impl LoadBalancer {
             worker_uri.push_str(path_and_query.as_str());
         }
 
-        if req.uri().path().ends_with("change_algo") {
+        if req.uri().path().ends_with("change_algorithm") {
             if let Some(value) = self.change_algorithm(&req).await {
                 return value;
             }
