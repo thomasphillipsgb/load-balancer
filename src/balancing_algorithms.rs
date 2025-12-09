@@ -45,17 +45,19 @@ impl LeastConnectionsAlgorithm {
 
 impl BalancingAlgorithm for LeastConnectionsAlgorithm {
     fn choose<'a>(&mut self, workers: &'a [Worker]) -> &'a Worker {
-        let chosen_one = workers
+        let chosen_worker = workers
             .iter()
             .min_by_key(|worker| *self.connection_map.get(&worker.host).unwrap_or(&0));
 
-        if let Some(worker) = chosen_one {
-            *self.connection_map.entry(worker.host.clone()).or_insert(0) += 1;
+        if let Some(chosen_worker) = chosen_worker {
+            self.connection_map
+                .entry(chosen_worker.host.clone()) // is there a better way than to clone this?
+                .and_modify(|existing| *existing += 1)
+                .or_insert(0);
+            println!("Chosen worker: {}", chosen_worker.host);
+            return chosen_worker;
         }
-
-        let chosen_one = chosen_one.unwrap();
-        println!("Chosen worker: {}", chosen_one.host);
-        chosen_one
+        panic!("There are no workers setup!")
     }
 
     fn release(&mut self, worker: &Worker) {
