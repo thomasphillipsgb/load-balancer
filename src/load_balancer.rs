@@ -139,6 +139,7 @@ struct ChangeAlgoRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
 enum BalancingAlgorithmType {
     RoundRobin,
     LeastConnections,
