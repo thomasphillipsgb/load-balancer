@@ -63,7 +63,7 @@ impl BalancingAlgorithm for LeastConnectionsAlgorithm {
     fn release(&mut self, worker: &Worker) {
         if let Some(counter) = self.connection_map.get_mut(&worker.host) {
             if *counter > 0 {
-                *counter = *counter - 1;
+                *counter -= 1;
             }
             println!(
                 "Released worker: {}, current connections: {}",
