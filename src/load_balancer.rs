@@ -51,6 +51,10 @@ impl LoadBalancer {
         &self,
         mut req: Request<Incoming>,
     ) -> Result<hyper::Response<ResponseBody>, hyper_util::client::legacy::Error> {
+        if req.uri().path().ends_with("change_algorithm") {
+            return self.change_algorithm(&req).await;
+        }
+
         let worker = {
             self.balancing_algorithm
                 .write()
@@ -62,12 +66,6 @@ impl LoadBalancer {
         // Extract the path and query from the original request
         if let Some(path_and_query) = req.uri().path_and_query() {
             worker_uri.push_str(path_and_query.as_str());
-        }
-
-        if req.uri().path().ends_with("change_algorithm") {
-            if let Some(value) = self.change_algorithm(&req).await {
-                return value;
-            }
         }
 
         // Create a new URI from the worker URI
@@ -100,25 +98,38 @@ impl LoadBalancer {
     async fn change_algorithm(
         &self,
         req: &Request<Incoming>,
-    ) -> Option<Result<Response<ResponseBody>, Error>> {
-        let query = req.uri().query().expect("No Query");
-        let params: ChangeAlgoRequest =
-            serde_urlencoded::from_str(query).expect("Query is invalid for request");
-        let new_algo: Box<dyn BalancingAlgorithm> = match params.algo_type {
-            BalancingAlgorithmType::RoundRobin => Box::new(RoundRobinAlgorithm::new()),
-            BalancingAlgorithmType::LeastConnections => {
-                Box::new(LeastConnectionsAlgorithm::new(&self.worker_hosts))
-            }
+    ) -> Result<Response<ResponseBody>, Error> {
+        let response_body = match req.uri().query() {
+            Some(query) => match serde_urlencoded::from_str::<ChangeAlgoRequest>(query) {
+                Ok(params) => {
+                    let new_algo: Box<dyn BalancingAlgorithm> = match params.algo_type {
+                        BalancingAlgorithmType::RoundRobin => Box::new(RoundRobinAlgorithm::new()),
+                        BalancingAlgorithmType::LeastConnections => {
+                            Box::new(LeastConnectionsAlgorithm::new(&self.worker_hosts))
+                        }
+                    };
+                    let mut algo = self.balancing_algorithm.write().await;
+                    *algo = new_algo;
+                    ResponseBody::new(
+                        "Algorithm Changed!"
+                            .to_string()
+                            .map_err(|infallible| match infallible {}),
+                    )
+                }
+                Err(_) => ResponseBody::new(
+                    "Invalid Algorithm Type"
+                        .to_string()
+                        .map_err(|infallible| match infallible {}),
+                ),
+            },
+            None => ResponseBody::new(
+                "No Query Attached"
+                    .to_string()
+                    .map_err(|infallible| match infallible {}),
+            ),
         };
-        let mut algo = self.balancing_algorithm.write().await;
-        *algo = new_algo;
 
-        let response_body: ResponseBody = ResponseBody::new(
-            Full::new(Bytes::from("Balancing algorithm changed successfully"))
-                .map_err(|infallible| match infallible {}),
-        );
-
-        return Some(Ok(Response::new(response_body)));
+        return Ok(Response::new(response_body));
     }
 }
 
