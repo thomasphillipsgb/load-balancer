@@ -29,11 +29,11 @@ impl BalancingAlgorithm for RoundRobinAlgorithm {
     }
 }
 
-pub struct LeastConnections {
+pub struct LeastConnectionsAlgorithm {
     connection_map: HashMap<String, i32>,
 }
 
-impl LeastConnections {
+impl LeastConnectionsAlgorithm {
     pub fn new(workers: &[Worker]) -> Self {
         let mut connection_map = HashMap::new();
         for worker in workers {
@@ -43,27 +43,21 @@ impl LeastConnections {
     }
 }
 
-impl BalancingAlgorithm for LeastConnections {
+impl BalancingAlgorithm for LeastConnectionsAlgorithm {
     fn choose<'a>(&mut self, workers: &'a [Worker]) -> &'a Worker {
-        let chosen_one = workers
+        let chosen_worker = workers
             .iter()
             .min_by_key(|worker| *self.connection_map.get(&worker.host).unwrap_or(&0));
 
-        if let Some(worker) = chosen_one {
-            *self.connection_map.entry(worker.host.clone()).or_insert(0) += 1;
+        if let Some(chosen_worker) = chosen_worker {
+            // Since we initialize all workers in new(), they always exist
+            if let Some(counter) = self.connection_map.get_mut(&chosen_worker.host) {
+                *counter += 1;
+            }
+            println!("Chosen worker: {}", chosen_worker.host); // TODO: move over to logging
+            return chosen_worker;
         }
-
-        if let Some(worker) = chosen_one {
-            let counter = self.connection_map.entry(worker.host.clone()).or_insert(0);
-            *counter += 1;
-
-            println!(
-                "Chosen worker: {}, current connections: {}",
-                worker.host, *counter
-            );
-        }
-
-        chosen_one.unwrap()
+        panic!("There are no workers setup!")
     }
 
     fn release(&mut self, worker: &Worker) {

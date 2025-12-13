@@ -1,13 +1,26 @@
-use std::{str::FromStr, sync::Arc};
+use std::str::FromStr;
 
-use hyper::{Request, Uri, body::Incoming};
+use http_body_util::{BodyExt, Empty, Full, combinators::BoxBody};
+use hyper::{
+    Request, Response, Uri,
+    body::{Bytes, Incoming},
+};
 use hyper_util::{
-    client::legacy::{Client, ResponseFuture, connect::HttpConnector},
+    client::legacy::{Client, Error as ClientError, connect::HttpConnector},
     rt::TokioExecutor,
 };
+use serde::Deserialize;
 use tokio::sync::RwLock;
 
-use crate::{balancing_algorithms::BalancingAlgorithm, worker::Worker};
+use crate::{
+    balancing_algorithms::{BalancingAlgorithm, LeastConnectionsAlgorithm, RoundRobinAlgorithm},
+    worker::Worker,
+};
+
+pub type ResponseBody = http_body_util::combinators::BoxBody<
+    hyper::body::Bytes,
+    Box<dyn std::error::Error + Send + Sync>,
+>;
 
 pub struct LoadBalancer {
     client: Client<HttpConnector, Incoming>,
@@ -34,10 +47,14 @@ impl LoadBalancer {
         })
     }
 
-    pub async fn forward_request(
+    pub async fn handle_request(
         &self,
         mut req: Request<Incoming>,
-    ) -> Result<hyper::Response<Incoming>, hyper_util::client::legacy::Error> {
+    ) -> Result<hyper::Response<ResponseBody>, hyper_util::client::legacy::Error> {
+        if req.uri().path().ends_with("change_algorithm") {
+            return self.change_algorithm(&req).await;
+        }
+
         let worker = {
             self.balancing_algorithm
                 .write()
@@ -67,6 +84,63 @@ impl LoadBalancer {
 
         let response = self.client.request(new_req).await;
         self.balancing_algorithm.write().await.release(worker);
-        response
+
+        // Wrap the streaming response body in BoxBody
+        response.map(|res| {
+            let (parts, body) = res.into_parts();
+            let boxed_body: ResponseBody = body
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+                .boxed();
+            Response::from_parts(parts, boxed_body)
+        })
     }
+
+    async fn change_algorithm(
+        &self,
+        req: &Request<Incoming>,
+    ) -> Result<Response<ResponseBody>, ClientError> {
+        let response_body = match req.uri().query() {
+            Some(query) => match serde_urlencoded::from_str::<ChangeAlgoRequest>(query) {
+                Ok(params) => {
+                    let new_algo: Box<dyn BalancingAlgorithm> = match params.algo_type {
+                        BalancingAlgorithmType::RoundRobin => Box::new(RoundRobinAlgorithm::new()),
+                        BalancingAlgorithmType::LeastConnections => {
+                            Box::new(LeastConnectionsAlgorithm::new(&self.worker_hosts))
+                        }
+                    };
+                    let mut algo = self.balancing_algorithm.write().await;
+                    *algo = new_algo;
+                    ResponseBody::new(
+                        "Algorithm Changed!"
+                            .to_string()
+                            .map_err(|infallible| match infallible {}),
+                    )
+                }
+                Err(_) => ResponseBody::new(
+                    "Invalid Algorithm Type"
+                        .to_string()
+                        .map_err(|infallible| match infallible {}),
+                ),
+            },
+            None => ResponseBody::new(
+                "No Query Attached"
+                    .to_string()
+                    .map_err(|infallible| match infallible {}),
+            ),
+        };
+
+        Ok(Response::new(response_body))
+    }
+}
+
+#[derive(Deserialize)]
+struct ChangeAlgoRequest {
+    algo_type: BalancingAlgorithmType,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum BalancingAlgorithmType {
+    RoundRobin,
+    LeastConnections,
 }
