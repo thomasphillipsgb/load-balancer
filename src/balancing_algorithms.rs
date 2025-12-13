@@ -50,11 +50,11 @@ impl BalancingAlgorithm for LeastConnectionsAlgorithm {
             .min_by_key(|worker| *self.connection_map.get(&worker.host).unwrap_or(&0));
 
         if let Some(chosen_worker) = chosen_worker {
-            self.connection_map
-                .entry(chosen_worker.host.clone()) // is there a better way than to clone this?
-                .and_modify(|existing| *existing += 1)
-                .or_insert(0);
-            println!("Chosen worker: {}", chosen_worker.host);
+            // Since we initialize all workers in new(), they always exist
+            if let Some(counter) = self.connection_map.get_mut(&chosen_worker.host) {
+                *counter += 1;
+            }
+            println!("Chosen worker: {}", chosen_worker.host); // TODO: move over to logging
             return chosen_worker;
         }
         panic!("There are no workers setup!")

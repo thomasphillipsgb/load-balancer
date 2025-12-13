@@ -6,7 +6,7 @@ use hyper::{
     body::{Bytes, Incoming},
 };
 use hyper_util::{
-    client::legacy::{Client, Error, connect::HttpConnector},
+    client::legacy::{Client, Error as ClientError, connect::HttpConnector},
     rt::TokioExecutor,
 };
 use serde::Deserialize;
@@ -98,7 +98,7 @@ impl LoadBalancer {
     async fn change_algorithm(
         &self,
         req: &Request<Incoming>,
-    ) -> Result<Response<ResponseBody>, Error> {
+    ) -> Result<Response<ResponseBody>, ClientError> {
         let response_body = match req.uri().query() {
             Some(query) => match serde_urlencoded::from_str::<ChangeAlgoRequest>(query) {
                 Ok(params) => {
@@ -129,7 +129,7 @@ impl LoadBalancer {
             ),
         };
 
-        return Ok(Response::new(response_body));
+        Ok(Response::new(response_body))
     }
 }
 
