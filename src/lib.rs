@@ -1,5 +1,4 @@
 pub mod balancing_algorithms;
-mod env;
 mod load_balancer;
 
 pub use load_balancer::{LoadBalancer, ResponseBody};
