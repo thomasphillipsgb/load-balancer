@@ -66,7 +66,7 @@ impl LoadBalancer {
 
             let mut metrics = self.metrics.write().await;
 
-            if metrics.get_average_response_time(algo_type).unwrap_or(0.0) > 2.0 {
+            if metrics.get_average_response_time(algo_type).unwrap_or(0) > 2000 {
                 if algo.get_type() == AlgorithmType::LeastConnections {
                     metrics.reset(algo_type);
                     *algo = Box::new(RoundRobinAlgorithm::new());
@@ -106,7 +106,7 @@ impl LoadBalancer {
 
         let response = self.client.request(new_req).await;
 
-        let elapsed_time = before_time.elapsed().as_secs_f32();
+        let elapsed_time = before_time.elapsed().as_millis();
 
         self.balancing_algorithm.write().await.release(worker);
         self.metrics

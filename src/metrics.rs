@@ -3,28 +3,28 @@ use std::collections::HashMap;
 use crate::{Worker, balancing_algorithms::AlgorithmType};
 
 pub struct Metrics {
-    pub average_response_time_for_algorithm: HashMap<AlgorithmType, f32>,
-    request_count: f32,
+    average_response_time_for_algorithm: HashMap<AlgorithmType, u128>,
+    request_count: u128,
 }
 
 impl Metrics {
     pub fn new() -> Self {
         Metrics {
             average_response_time_for_algorithm: HashMap::new(),
-            request_count: 0f32,
+            request_count: 0,
         }
     }
 
-    pub fn record_response_time(&mut self, algorithm_type: AlgorithmType, time: f32) {
+    pub fn record_response_time(&mut self, algorithm_type: AlgorithmType, time_ms: u128) {
         let entry = self
             .average_response_time_for_algorithm
             .entry(algorithm_type)
-            .or_insert(0f32);
-        *entry = ((*entry * self.request_count) + time) / (self.request_count + 1f32);
-        self.request_count += 1f32;
+            .or_insert(0);
+        *entry = ((*entry * self.request_count) + time_ms) / (self.request_count + 1);
+        self.request_count += 1;
     }
 
-    pub fn get_average_response_time(&self, algorithm_type: AlgorithmType) -> Option<f32> {
+    pub fn get_average_response_time(&self, algorithm_type: AlgorithmType) -> Option<u128> {
         self.average_response_time_for_algorithm
             .get(&algorithm_type)
             .map(|&time| time)
@@ -33,6 +33,6 @@ impl Metrics {
     pub fn reset(&mut self, algorithm_type: AlgorithmType) {
         self.average_response_time_for_algorithm
             .remove(&algorithm_type);
-        self.request_count = 0f32;
+        self.request_count = 0;
     }
 }
