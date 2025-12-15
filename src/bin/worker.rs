@@ -53,6 +53,7 @@ async fn worker_service(
             .map(|pq| pq.as_str())
             .unwrap_or("/")
     );
+    println!("{}", message);
 
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/health") => Ok(Response::builder()

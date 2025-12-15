@@ -7,6 +7,13 @@ pub trait BalancingAlgorithm: Send + Sync {
     fn release(&mut self, worker: &Worker) {
         let _ = worker;
     }
+    fn get_type(&self) -> AlgorithmType;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AlgorithmType {
+    RoundRobin,
+    LeastConnections,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -26,6 +33,9 @@ impl BalancingAlgorithm for RoundRobinAlgorithm {
         self.current_index = (self.current_index + 1) % workers.len();
         println!("Chosen worker: {}", worker.host);
         worker
+    }
+    fn get_type(&self) -> AlgorithmType {
+        AlgorithmType::RoundRobin
     }
 }
 
@@ -70,5 +80,9 @@ impl BalancingAlgorithm for LeastConnectionsAlgorithm {
                 worker.host, *counter
             );
         }
+    }
+
+    fn get_type(&self) -> AlgorithmType {
+        AlgorithmType::LeastConnections
     }
 }
