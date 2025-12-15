@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::worker::Worker;
+use crate::Worker;
 
 pub trait BalancingAlgorithm: Send + Sync {
     fn choose<'a>(&mut self, workers: &'a [Worker]) -> &'a Worker;

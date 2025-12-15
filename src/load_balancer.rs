@@ -13,8 +13,8 @@ use serde::Deserialize;
 use tokio::sync::RwLock;
 
 use crate::{
+    Worker,
     balancing_algorithms::{BalancingAlgorithm, LeastConnectionsAlgorithm, RoundRobinAlgorithm},
-    worker::Worker,
 };
 
 pub type ResponseBody = http_body_util::combinators::BoxBody<

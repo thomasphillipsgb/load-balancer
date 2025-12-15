@@ -1,7 +1,10 @@
 pub mod balancing_algorithms;
+mod env;
 mod load_balancer;
-mod worker;
 
 pub use load_balancer::{LoadBalancer, ResponseBody};
-pub use worker::Worker;
-pub use worker::worker_service;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Worker {
+    pub host: String,
+}
