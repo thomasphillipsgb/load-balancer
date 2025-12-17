@@ -13,8 +13,11 @@ use serde::Deserialize;
 use tokio::sync::RwLock;
 
 use crate::{
-    balancing_algorithms::{BalancingAlgorithm, LeastConnectionsAlgorithm, RoundRobinAlgorithm},
-    worker::Worker,
+    Worker,
+    balancing_algorithms::{
+        AlgorithmType, BalancingAlgorithm, LeastConnectionsAlgorithm, RoundRobinAlgorithm,
+    },
+    metrics::Metrics,
 };
 
 pub type ResponseBody = http_body_util::combinators::BoxBody<
@@ -26,6 +29,7 @@ pub struct LoadBalancer {
     client: Client<HttpConnector, Incoming>,
     worker_hosts: Vec<Worker>,
     balancing_algorithm: RwLock<Box<dyn BalancingAlgorithm>>,
+    metrics: RwLock<Metrics>,
 }
 
 impl LoadBalancer {
@@ -44,6 +48,7 @@ impl LoadBalancer {
             client,
             worker_hosts,
             balancing_algorithm: RwLock::new(balancing_algorithm),
+            metrics: RwLock::new(Metrics::new()),
         })
     }
 
@@ -55,12 +60,27 @@ impl LoadBalancer {
             return self.change_algorithm(&req).await;
         }
 
-        let worker = {
-            self.balancing_algorithm
-                .write()
-                .await
-                .choose(&self.worker_hosts)
+        let (worker, algo_type) = {
+            let mut algo = self.balancing_algorithm.write().await;
+            let algo_type = algo.get_type();
+
+            let mut metrics = self.metrics.write().await;
+
+            if metrics.get_average_response_time_ms(algo_type) > 2000 {
+                if algo.get_type() == AlgorithmType::LeastConnections {
+                    metrics.reset(algo_type);
+                    *algo = Box::new(RoundRobinAlgorithm::new());
+                    println!("Switching to RoundRobinAlgorithm");
+                } else {
+                    // Switch to LeastConnectionsAlgorithm
+                    metrics.reset(algo_type);
+                    *algo = Box::new(LeastConnectionsAlgorithm::new(&self.worker_hosts));
+                    println!("Switching to LeastConnectionsAlgorithm");
+                }
+            }
+            (algo.choose(&self.worker_hosts), algo_type)
         };
+
         let mut worker_uri = worker.host.clone();
 
         // Extract the path and query from the original request
@@ -82,8 +102,17 @@ impl LoadBalancer {
 
         let new_req = builder.body(req.into_body()).expect("request builder");
 
+        let before_time = std::time::Instant::now();
+
         let response = self.client.request(new_req).await;
+
+        let elapsed_time = before_time.elapsed().as_millis();
+
         self.balancing_algorithm.write().await.release(worker);
+        self.metrics
+            .write()
+            .await
+            .record_response_time(algo_type, elapsed_time);
 
         // Wrap the streaming response body in BoxBody
         response.map(|res| {

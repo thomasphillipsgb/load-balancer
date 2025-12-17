@@ -8,7 +8,6 @@ use hyper::{
 };
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto::Builder;
-use load_balancer::worker_service;
 use tokio::{net::TcpListener, task};
 
 #[tokio::main]
@@ -38,5 +37,48 @@ async fn main() {
                 eprintln!("worker connection error: {err}");
             }
         });
+    }
+}
+
+async fn worker_service(
+    req: Request<Incoming>,
+    port: u16,
+) -> Result<Response<Full<Bytes>>, Infallible> {
+    let message = format!(
+        "worker on port {} received {} {}",
+        port,
+        req.method(),
+        req.uri()
+            .path_and_query()
+            .map(|pq| pq.as_str())
+            .unwrap_or("/")
+    );
+    println!("{}", message);
+
+    match (req.method(), req.uri().path()) {
+        (&Method::GET, "/health") => Ok(Response::builder()
+            .status(StatusCode::OK)
+            .body(Full::new(Bytes::from("Health Status - OK\r\n")))
+            .expect("response builder")),
+        (&Method::GET, "/heavy_work") => {
+            tokio::time::sleep(Duration::from_secs(10)).await;
+
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .body(Full::new(Bytes::from("Heavy Work complete!\r\n")))
+                .expect("response builder"))
+        }
+        (&Method::GET, "/work") => {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .body(Full::new(Bytes::from("Work complete!\r\n")))
+                .expect("response builder"))
+        }
+        _ => Ok(Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Full::new(Bytes::from(message)))
+            .expect("response builder")),
     }
 }
