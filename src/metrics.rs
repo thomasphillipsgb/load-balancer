@@ -24,10 +24,11 @@ impl Metrics {
         self.request_count += 1;
     }
 
-    pub fn get_average_response_time(&self, algorithm_type: AlgorithmType) -> Option<u128> {
-        self.average_response_time_for_algorithm
+    pub fn get_average_response_time_ms(&self, algorithm_type: AlgorithmType) -> u128 {
+        *self
+            .average_response_time_for_algorithm
             .get(&algorithm_type)
-            .map(|&time| time)
+            .unwrap_or(&0)
     }
 
     pub fn reset(&mut self, algorithm_type: AlgorithmType) {
