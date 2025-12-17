@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 
+use tokio::time::Instant;
+
 use crate::{Worker, balancing_algorithms::AlgorithmType};
 
 pub struct Metrics {
     average_response_time_for_algorithm: HashMap<AlgorithmType, u128>,
     request_count: u128,
+    previous_switch_timestamp: Instant,
 }
 
 impl Metrics {
@@ -12,6 +15,7 @@ impl Metrics {
         Metrics {
             average_response_time_for_algorithm: HashMap::new(),
             request_count: 0,
+            previous_switch_timestamp: Instant::now(),
         }
     }
 
@@ -35,5 +39,10 @@ impl Metrics {
         self.average_response_time_for_algorithm
             .remove(&algorithm_type);
         self.request_count = 0;
+        self.previous_switch_timestamp = Instant::now();
+    }
+
+    pub fn should_switch(&self) -> bool {
+        self.previous_switch_timestamp.elapsed().as_secs() >= 10
     }
 }

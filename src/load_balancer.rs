@@ -28,8 +28,8 @@ pub type ResponseBody = http_body_util::combinators::BoxBody<
 pub struct LoadBalancer {
     client: Client<HttpConnector, Incoming>,
     worker_hosts: Vec<Worker>,
-    balancing_algorithm: RwLock<Box<dyn BalancingAlgorithm>>,
-    metrics: RwLock<Metrics>,
+    pub balancing_algorithm: RwLock<Box<dyn BalancingAlgorithm>>,
+    pub metrics: RwLock<Metrics>,
 }
 
 impl LoadBalancer {
@@ -66,7 +66,7 @@ impl LoadBalancer {
 
             let mut metrics = self.metrics.write().await;
 
-            if metrics.get_average_response_time_ms(algo_type) > 2000 {
+            if metrics.should_switch() && metrics.get_average_response_time_ms(algo_type) > 2000 {
                 if algo.get_type() == AlgorithmType::LeastConnections {
                     metrics.reset(algo_type);
                     *algo = Box::new(RoundRobinAlgorithm::new());
