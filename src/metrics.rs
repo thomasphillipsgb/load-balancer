@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{Worker, balancing_algorithms::AlgorithmType};
+use crate::balancing_algorithms::AlgorithmType;
 
+#[derive(Default)]
 pub struct Metrics {
     average_response_time_for_algorithm: HashMap<AlgorithmType, u128>,
     request_count: u128,

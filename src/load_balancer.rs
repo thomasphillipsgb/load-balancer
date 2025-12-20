@@ -32,6 +32,8 @@ pub struct LoadBalancer {
     metrics: RwLock<Metrics>,
 }
 
+const ALGORITHM_SWITCH_THRESHOLD_MS: u128 = 2000;
+
 impl LoadBalancer {
     pub fn new(
         worker_hosts: Vec<Worker>,
@@ -61,24 +63,37 @@ impl LoadBalancer {
         }
 
         let (worker, algo_type) = {
-            let mut algo = self.balancing_algorithm.write().await;
-            let algo_type = algo.get_type();
+            let mut algo_type = self.balancing_algorithm.read().await.get_type();
 
-            let mut metrics = self.metrics.write().await;
+            let metrics_response_time_ms = {
+                self.metrics
+                    .write()
+                    .await
+                    .get_average_response_time_ms(algo_type)
+            };
 
-            if metrics.get_average_response_time_ms(algo_type) > 2000 {
-                if algo.get_type() == AlgorithmType::LeastConnections {
-                    metrics.reset(algo_type);
-                    *algo = Box::new(RoundRobinAlgorithm::new());
+            if metrics_response_time_ms > ALGORITHM_SWITCH_THRESHOLD_MS {
+                if algo_type == AlgorithmType::LeastConnections {
+                    self.metrics.write().await.reset(algo_type);
+                    *self.balancing_algorithm.write().await = Box::new(RoundRobinAlgorithm::new());
+                    algo_type = AlgorithmType::RoundRobin;
                     println!("Switching to RoundRobinAlgorithm");
                 } else {
                     // Switch to LeastConnectionsAlgorithm
-                    metrics.reset(algo_type);
-                    *algo = Box::new(LeastConnectionsAlgorithm::new(&self.worker_hosts));
+                    self.metrics.write().await.reset(algo_type);
+                    *self.balancing_algorithm.write().await =
+                        Box::new(LeastConnectionsAlgorithm::new(&self.worker_hosts));
+                    algo_type = AlgorithmType::LeastConnections;
                     println!("Switching to LeastConnectionsAlgorithm");
                 }
             }
-            (algo.choose(&self.worker_hosts), algo_type)
+            (
+                self.balancing_algorithm
+                    .write()
+                    .await
+                    .choose(&self.worker_hosts),
+                algo_type,
+            )
         };
 
         let mut worker_uri = worker.host.clone();
